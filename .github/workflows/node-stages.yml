@@ -1,0 +1,80 @@
+name: Node-Pipeline (Stages)
+
+on:
+  push:
+    paths:
+      - "node-app/**"
+      - ".github/workflows/node-stages.yml"
+  pull_request:
+    paths:
+      - "node-app/**"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: node-app # alle Befehle laufen im Unterordner
+
+jobs:
+  # Stufe 1: Code-Qualität – lint und format laufen parallel
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: node-app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: node-app/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+
+  # Stufe 2: Tests – erst wenn der Code sauber ist
+  test:
+    needs: [lint, format]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: node-app/package-lock.json
+      - run: npm ci
+      - run: npm run test:coverage
+
+  # Stufe 3: Build – erzeugt dist/ und speichert es als Artefakt
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: node-app/dist
+
+  # Stufe 4: Deploy – nur auf main, nimmt genau das gebaute Artefakt
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: ls -R dist && echo "🚀 Simulierter Deploy von dist/ ... ✅"
+        working-directory: .
